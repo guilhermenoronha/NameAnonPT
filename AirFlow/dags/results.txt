@@ -1,0 +1,8 @@
+Total tokens: 8915Total B-NOME: 185
+Total I-NOME: 173
+Total O: 8557
+F-Score = 0.9728547392035894
+Confusion Matrix: 
+[[  59    2  124]
+ [  17   79   77]
+ [  10   12 8535]]
