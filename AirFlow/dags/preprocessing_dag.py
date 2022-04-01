@@ -11,8 +11,10 @@ import glob
 import os
 import re
 
+container_path = '/opt/bitnami/airflow/dags/'
+
 def _load_txt():
-    file_path = glob.glob('/opt/airflow/dags/corpus/*.txt')
+    file_path = glob.glob(container_path + 'corpus/*.txt')
     files = []
     for file in file_path:
         with open(file, 'r', encoding='UTF-8') as f:
@@ -44,7 +46,7 @@ def _write_label_studio(ti):
     dicts = ti.xcom_pull(key='return_value', task_ids= ['File_To_Dict'])
     for dict_ in dicts[0]:
         print('dict: ',dict_.get('letter'))
-        with open (f'/opt/airflow/dags/label-studio/{dict_.get("letter")}.txt', 'w', encoding='UTF-8') as f:
+        with open (f'{container_path}label-studio/{dict_.get("letter")}.txt', 'w', encoding='UTF-8') as f:
             f.write(dict_.get('preprocessed text'))
 
 
@@ -55,7 +57,7 @@ def _append_conll_to_dicts(ti):
     tags = []
     tag_list = []
 
-    with open('/opt/airflow/dags/annotated-corpus/annotated-corpus.conll', 'r', encoding='UTF-8') as f:
+    with open(container_path + 'annotated-corpus/annotated-corpus.conll', 'r', encoding='UTF-8') as f:
         full_text = f.readlines()
 
     for line in full_text[1:]:
@@ -95,12 +97,12 @@ def _create_test_train_data(ti):
     X_train, X_test = train_test_split(dicts, test_size=0.20, random_state=42)
 
     # bilstm-crf library requires the train dataset to be named as dataset.txt
-    with open ('/opt/airflow/dags/test_train_data/dataset.txt', 'w', encoding='UTF-8') as f:
+    with open (container_path + 'test_train_data/dataset.txt', 'w', encoding='UTF-8') as f:
             for document in X_train:
                 f.write('[%s]\t[%s]\n' % (', '.join(f'"{token}"' for token in document.get('tokens')),
                                         ', '.join(f'"{tag}"' for tag in document.get('tags'))))
 
-    with open ('/opt/airflow/dags/test_train_data/test.txt', 'w', encoding='UTF-8') as f:
+    with open (container_path + 'test_train_data/test.txt', 'w', encoding='UTF-8') as f:
             for document in X_test:
                 f.write('[%s]\t[%s]\n' % (', '.join(f'"{token}"' for token in document.get('tokens')),
                                         ', '.join(f'"{tag}"' for tag in document.get('tags'))))
@@ -109,7 +111,7 @@ def _create_test_train_data(ti):
 
 def _create_vocab_and_tags_files(ti):
     tags = ('B-PER', 'I-PER', 'O')
-    with open('/opt/airflow/dags/test_train_data/tags.json', 'w', encoding='UTF-8') as f:
+    with open(container_path + 'test_train_data/tags.json', 'w', encoding='UTF-8') as f:
         f.write('[%s]' % (', '.join(f'"{tag}"' for tag in tags)) )
         
     vocab = []
@@ -117,7 +119,7 @@ def _create_vocab_and_tags_files(ti):
     for doc in X_train:
         vocab.extend(doc.get('tokens'))
     vocab = list(dict.fromkeys(vocab))
-    with open('/opt/airflow/dags/test_train_data/vocab.json', 'w', encoding='UTF-8') as f:
+    with open(container_path + 'test_train_data/vocab.json', 'w', encoding='UTF-8') as f:
         f.write('[%s]' % (', '.join(f'"{token}"' for token in vocab)) )
     return tags
     
@@ -144,14 +146,14 @@ def _test_model(ti):
     for i, token in enumerate(test_tokens):
         true_tags = tags_to_numbers(tags, test_tags[i])
         y_true += true_tags
-        model = WordsTagger(model_dir='/opt/airflow/dags/cartas_anon_model')
+        model = WordsTagger(model_dir=container_path + 'cartas_anon_model')
         pred_tags, _ = model([token])
         pred_tokens = tags_to_numbers(tags, pred_tags[0])
         y_pred += pred_tokens
 
     f1 = f1_score(y_true, y_pred, average='micro')
     matrix = confusion_matrix(y_true, y_pred)
-    with open('/opt/airflow/dags/results.txt', 'w', encoding='UTF-8') as f:
+    with open(container_path + 'results.txt', 'w', encoding='UTF-8') as f:
         f.write(f'Total tokens: {len(y_true)}')
         f.write(f'Total B-NOME: {y_true.count(0)}\n')
         f.write(f'Total I-NOME: {y_true.count(1)}\n')
@@ -160,7 +162,7 @@ def _test_model(ti):
         f.write(f'Confusion Matrix: {matrix}')
 
 def _is_conll_created():
-    if not os.path.isfile('/opt/airflow/dags/annotated-corpus/annotated-corpus.conll'):
+    if not os.path.isfile(container_path + 'annotated-corpus/annotated-corpus.conll'):
         raise ValueError('File doesn\'t exist.')
 
 
@@ -188,7 +190,7 @@ with DAG(dag_id = 'cartasAnonPT',
 
     t3 = BashOperator(
         task_id = 'Create_LabelStudio_Folder',
-        bash_command = 'mkdir -p -m 777 /opt/airflow/dags/label-studio'
+        bash_command = f'mkdir -p -m 777 {container_path}label-studio'
     )
 
     t4 = PythonOperator(
@@ -208,7 +210,7 @@ with DAG(dag_id = 'cartasAnonPT',
 
     t7 = BashOperator(
         task_id = 'Create_Test_Train_Folder',
-        bash_command = 'mkdir -p -m 777 /opt/airflow/dags/test_train_data'
+        bash_command = f'mkdir -p -m 777 {container_path}test_train_data'
     )
 
     t8 = PythonOperator(
@@ -223,7 +225,7 @@ with DAG(dag_id = 'cartasAnonPT',
 
     t10 = BashOperator(
         task_id = 'Run_BILSTM_Learner',
-        bash_command = 'python -m bi_lstm_crf "/opt/airflow/dags/test_train_data" --model_dir "/opt/airflow/dags/cartas_anon_model" --num_epoch 500 --save_best_val_model'
+        bash_command = f'python -m bi_lstm_crf "{container_path}test_train_data" --model_dir "{container_path}cartas_anon_model" --num_epoch 500 --save_best_val_model'
     )
 
     t11 = PythonOperator(
