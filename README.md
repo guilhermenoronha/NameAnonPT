@@ -8,7 +8,7 @@ CE-DOHS was preprocessed and, later, annotated using [label-studio](https://labe
 
 All the process can be found in Full Pipeline notebook.
 
-The F-Score obtained was *0.97*
+**The F-Score obtained was 0.97**
 
 ## How to use: Notebook version
 
